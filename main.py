@@ -3,6 +3,8 @@ import socket
 import threading
 from random import randint
 
+from auth import *
+
 '''
 My p2p protocol  
 (client action|filename)
@@ -13,20 +15,22 @@ client receiving file info from TRACKER (EXISTS|p2p server info)
 client receiving file info from TRACKER (NOFILE|p2p server info)
 '''
 
+MAX_FILE_SIZE = 8192 
+
 
 def handle_client(connection):
     while True:
-        filename = connection.recv(1024).decode('utf-8')
+        filename = connection.recv(MAX_FILE_SIZE).decode('utf-8')
         if not filename:
-            print("ERROR: No file... breaking") 
+            # print("ERROR: No file... breaking") 
             break
         if os.path.exists(filename):
             connection.send(str(os.path.getsize(filename)).encode('utf-8'))
             with open(filename,'rb') as f:
-                bytes_read = f.read(1024)
+                bytes_read = f.read(MAX_FILE_SIZE)
                 while bytes_read:
                     connection.send(bytes_read)
-                    bytes_read = f.read(1024)
+                    bytes_read = f.read(MAX_FILE_SIZE)
             print(f"Sent: {filename}")
         else:
             connection.send(b"The file does not exist")
@@ -39,19 +43,18 @@ def start_tracker(host='0.0.0.0',port=12345):
     sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
     sock.bind((host,port))
     sock.listen(5)
-    print(f"Listening on {host}:{port}")
+    print(f"TRACKER: Listening on {host}:{port}")
     while True:
         conn, addr = sock.accept()
-        print(f"Connected by {addr}")
-        print(conn)
-        protocol = conn.recv(1024).decode('utf-8').split("|") 
-        print(protocol)
+        print(f"TRACKER: Connected by {addr}")
+        protocol = conn.recv(MAX_FILE_SIZE).decode('utf-8').split("|") 
+        # print(protocol)
         if len(protocol) > 1:
             if protocol[0] == "SEND": 
                 filename = protocol[1] 
                 listening_addr = protocol[2] 
                 listening_port = protocol[3] 
-                print(f"Tracker received client send data: {filename} - FROM: {(listening_addr, listening_port)}") 
+                print(f"TRACKER: received client send data: {filename} - FROM: {(listening_addr, listening_port)}") 
                 # store file data and peer info in file_db
                 if filename not in file_db: 
                     file_db[filename] = (listening_addr, listening_port)
@@ -60,7 +63,7 @@ def start_tracker(host='0.0.0.0',port=12345):
                     print("TRACKER ERROR: FILE ALREADY EXISTS") 
             elif protocol[0] == "REQUEST": 
                 filename = protocol[1]
-                print(f"Tracker received client request: {filename} - FROM: {addr}") 
+                print(f"TRACKER: received client request: {filename} - FROM: {addr}") 
                 if filename in file_db: 
                     print(f"TRACKER: {filename} exists")
                     p2p_server_addr, p2p_server_port = file_db[filename] 
@@ -86,12 +89,15 @@ def client_send_to_tracker(host='0.0.0.0', port=12345, filename=''):
     listening_port = 6000
 
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((host,port))
+    try: 
+        client.connect((host,port))
+    except ConnectionRefusedError: 
+        raise Exception("Tracker has not been started yet")
+
     with open(filename, 'rb') as f:
         while True:
-            data = f.read(1024)
+            data = f.read(MAX_FILE_SIZE)
             if not data:
-                print("CLIENT SEND ERROR: NO FILE DATA") 
                 break
             client.sendall(f'SEND|{filename}|{listening_addr}|{listening_port}'.encode('utf-8'))  # we have a space here so we can split it in the tracker  
 
@@ -120,10 +126,15 @@ def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
         port: the tracker port number
     '''
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.connect((host,port))
+    try:
+        sock.connect((host,port))
+    except: 
+        raise Exception("Tracker has not been started yet")
+
     sock.sendall(f'REQUEST|{filename}'.encode('utf-8'))
 
-    response = sock.recv(1024).decode('utf-8').split("|")
+    response = sock.recv(MAX_FILE_SIZE).decode('utf-8').split("|")
+    # print(response)
     if response[0] == "EXISTS":
         p2p_server_addr = response[1] 
         p2p_server_port = response[2] 
@@ -134,10 +145,10 @@ def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
         p2p.connect((p2p_server_addr, int(p2p_server_port)))
         p2p.send(filename.encode('utf-8'))
 
-        response = p2p.recv(1024).decode('utf-8')
+        response = p2p.recv(MAX_FILE_SIZE).decode('utf-8')
         if response:
             full_path = f"{os.getcwd()}/{randint(0, 100000)}{filename}"
-            print("Data: ", response) 
+            # print("Data: ", response) 
 
             filesize = int(response)
             print(f"File exists, size: {filesize} bytes")
@@ -161,13 +172,20 @@ def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
     sock.close()
 
 if __name__=="__main__":
-    choice = input("Start tracker (t) or send(s) or request (r)? ")
-
+    generate_auth_file()
+    choice = input("start tracker (t)\nsend(s)\nfile request (f)\nregister (r)?\n")
     if choice.lower() == 't':
         start_tracker()
     elif choice.lower() == 's': 
-        filename = input("Enter the filename to send to the tracker: ")
+        login()
+        filename = input("Enter the filename to send to the tracker (max size 8kb): ")
         client_send_to_tracker(filename=filename)
-    elif choice.lower() == 'r':
+    elif choice.lower() == 'f':
+        login()
         filename = input("Enter the filename to request from the tracker: ")
         request_file_from_tracker(filename=filename)
+    elif choice.lower() == 'r': 
+        register()
+
+
+        
