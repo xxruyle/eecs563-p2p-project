@@ -11,6 +11,8 @@ My p2p protocol
 client sending files to tracker (SEND|FILENAME|client addr it will listen on|client port it will listen on)
 client requesting files from tracker (REQUEST|FILENAME)
 
+client asking for online client info (CLIENTS|ALL)
+
 client receiving file info from TRACKER (EXISTS|p2p server info)
 client receiving file info from TRACKER (NOFILE|p2p server info)
 '''
@@ -18,7 +20,10 @@ client receiving file info from TRACKER (NOFILE|p2p server info)
 MAX_FILE_SIZE = 8192 
 
 
-def handle_client(connection):
+TRACKER_ADDR = "0.0.0.0" 
+TRACKER_PORT = 12345
+
+def handle_client(connection, sender_username):
     while True:
         filename = connection.recv(MAX_FILE_SIZE).decode('utf-8')
         if not filename:
@@ -34,10 +39,29 @@ def handle_client(connection):
             print(f"Sent: {filename}")
         else:
             connection.send(b"The file does not exist")
-    
+
     connection.close()
 
-def start_tracker(host='0.0.0.0',port=12345):
+def start_tracker(host=TRACKER_ADDR,port=TRACKER_PORT):
+    online_clients = {}
+    def add_online_client(listening_address, listening_port):
+        if listening_address not in online_clients: 
+            online_clients[listening_address] = listening_port 
+
+    def remove_online_client(listening_address, listening_port):
+        if listening_address in online_clients: 
+            del online_clients[listening_address]
+
+    def get_all_online_clients() -> str: 
+        send_string = ""
+        for addr in online_clients: 
+            port = online_clients[addr]
+            client_info = f"{addr}:{port}|"
+            send_string += client_info
+
+        return send_string 
+
+
     file_db = {} # {filename: (peer ip, peer port)}
 
     sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -57,6 +81,7 @@ def start_tracker(host='0.0.0.0',port=12345):
                 print(f"TRACKER: received client send data: {filename} - FROM: {(listening_addr, listening_port)}") 
                 # store file data and peer info in file_db
                 if filename not in file_db: 
+                    add_online_client(listening_addr, listening_port)
                     file_db[filename] = (listening_addr, listening_port)
                     print(f"TRACKER: stored sent {filename} in tracker db FROM {(listening_addr, listening_port)}")
                 else: 
@@ -71,10 +96,16 @@ def start_tracker(host='0.0.0.0',port=12345):
                 else: 
                     conn.send(f"NOFILE|none".encode('utf-8'))
                     print("TRACKER: FILE DOES NOT EXIST")  
+            elif protocol[0] == "CLIENTS":
+                clients = get_all_online_clients()
+                conn.send(clients.encode('utf-8'))
+                print(f"TRACKER: SENDING CLIENT INFO TO {addr}")
+
+
         else: 
             print("TRACKER ERROR: invalid protocol format received from client: ", addr)
 
-def client_send_to_tracker(host='0.0.0.0', port=12345, filename=''): 
+def client_send_to_tracker(host='127.0.0.1', port=6000, filename='', username=''): 
     '''
         - Client sends the name of file that it wants to share and its connection information to the
         Tracker node.
@@ -85,12 +116,12 @@ def client_send_to_tracker(host='0.0.0.0', port=12345, filename=''):
         port: the tracker port number
     '''
     # client sends the name of the file that it wants to share and its connection info to the tracker node 
-    listening_addr = "127.0.0.1"
-    listening_port = 6000
+    listening_addr = host
+    listening_port = port
 
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try: 
-        client.connect((host,port))
+        client.connect((TRACKER_ADDR,TRACKER_PORT))
     except ConnectionRefusedError: 
         raise Exception("Tracker has not been started yet")
 
@@ -113,11 +144,12 @@ def client_send_to_tracker(host='0.0.0.0', port=12345, filename=''):
         conn, addr = p2p.accept()
         print(f"Connection from {addr}")
         print("Client(listening) received info: ", conn)
-        threading.Thread(target=handle_client, args=(conn,)).start()
+        threading.Thread(target=handle_client, args=(conn,username,)).start()
 
 
 
-def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
+
+def request_file_from_tracker(filename=''):
     '''
         - Client requests a file using the tracker. 
         - Tracker replies with the connection information of the client which holds the file.
@@ -127,7 +159,7 @@ def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
     '''
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.connect((host,port))
+        sock.connect((TRACKER_ADDR,TRACKER_PORT))
     except: 
         raise Exception("Tracker has not been started yet")
 
@@ -171,19 +203,38 @@ def request_file_from_tracker(host='0.0.0.0',port=12345,filename=''):
     
     sock.close()
 
+def check_online_clients(host='0.0.0.0',port=12345): 
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.connect((host,port))
+    except: 
+        raise Exception("Tracker has not been started yet")
+
+    sock.sendall('CLIENTS|ALL'.encode('utf-8'))
+
+    response = sock.recv(MAX_FILE_SIZE).decode('utf-8').split("|")
+    print("ONLINE CLIENTS FROM TRACKER (IP:PORT)")
+    for client in response: 
+        print(client)
+
+
 if __name__=="__main__":
     generate_auth_file()
-    choice = input("start tracker (t)\nsend(s)\nfile request (f)\nregister (r)?\n")
+    choice = input("start tracker (t)\nsend(s)\nfile request (f)\ncheck online clients(c)\nregister (r)?\n")
     if choice.lower() == 't':
         start_tracker()
     elif choice.lower() == 's': 
-        login()
+        username = login()
+        listening_addr = input("Enter an address to listen on: ")
+        listening_port = int(input("Enter a port to listen on: "))
         filename = input("Enter the filename to send to the tracker (max size 8kb): ")
-        client_send_to_tracker(filename=filename)
+        client_send_to_tracker(host=listening_addr, port=listening_port, filename=filename, username=username)
     elif choice.lower() == 'f':
-        login()
+        username = login()
         filename = input("Enter the filename to request from the tracker: ")
         request_file_from_tracker(filename=filename)
+    elif choice.lower() == 'c':
+        check_online_clients()
     elif choice.lower() == 'r': 
         register()
 

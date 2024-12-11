@@ -59,14 +59,15 @@ def register():
         password = input("Enter a password: ").strip()
         res = store_username_and_password(username, password)
         if res: 
-            break
+            return username 
         else: 
             print("Username already exists")
 
-def login(): 
+def login() -> str: 
     '''
     Asks the user for a username and password 
     Uses is_authorized to check if the uesrname and password is valid
+    Return: username string 
     '''
     while True: 
         username = input("Enter a username: ").strip()
@@ -74,9 +75,11 @@ def login():
         res = is_authorized(username, password)
 
         if res: 
-            break
+            return username 
         else: 
             print("Login info does not exist. Register if you haven't already")
+
+
 
 
 
