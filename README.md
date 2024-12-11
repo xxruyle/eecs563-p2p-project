@@ -6,13 +6,13 @@ Name: Xavier Ruyle, 3037294
 ## Usage (Setup) 
 Have python installed on your machine. 
 
-The implementation has been tested using 3 clients on the same machine 
+The implementation has been tested using 3 clients on the same machine. 
 
-Run python main.py in the project root directory 
+Run python main.py in the project root directory.
 
 The user should see the following prompt: 
 ```
-❯ python3 main.py 
+$ python3 main.py 
 start tracker (t)
 send(s)
 file request (f)
@@ -20,7 +20,7 @@ check online clients(c)
 register (r)?
 ```
 
-NOTE: Before sending or receiving a file, the user must login (register (r), if they already haven't). There is a test user already in auth.txt if you want to use it (username: xavier, password: test)
+NOTE: Before sending or receiving a file, the user must login (register (r), if they already haven't). There is a test user already in auth.txt if you want to use it (username: xavier, password: test).
 
 - One client should have the tracker started (t)
 - Client(s) should send a file to the tracker (s)
@@ -29,68 +29,65 @@ NOTE: Before sending or receiving a file, the user must login (register (r), if 
     - The filename has a random number [0, 100000] assigned to it as a prefix. 
 
 ## Example of use  
-- Note: Some of these screenshots were taken before checking online clients was implemented 
+- Note: Some of these screenshots were taken before checking online clients was implemented.
 
 ### Tracker 
-Tracker is set up and verifies requests and senders
+Tracker is set up and verifies requests and senders (Figure 1)
 
-![Tracker](./screenshots/tracker.png)
+![Tracker](./screenshots/tracker.png) 
 
 ### Sender 
-Sender sends a file test.txt to the tracker and sends file to requester
+Sender sends a file test.txt to the tracker and sends file to requester (Figure 2)
 
 ![Sender](./screenshots/sender.png)
 
 ### File Requester 
-File requester requests file test.txt. Tracker verifies this request and a connection is established between sender and requester. Requester downloads the file. 
+File requester requests file test.txt. Tracker verifies this request and a connection is established between sender and requester. Requester downloads the file.  (Figure 3) 
 
 ![Requester](./screenshots/requester.png)
 
-New test.txt file in the directory 
+New test.txt file in the directory (Figure 4)
 
-![new test.txt file](./screenshots/received.png)
+![Downloaded test.txt file in project directory](./screenshots/received.png)
 
-### Check Online Clients
-Example after 127.0.0.0:6001 and 127.0.0.2:6002 sent a file:
-
-![](./screenshots/clients.png)
 
 ## Implementation Details  
 
 ### Network Infrastructure 
-The tracker acts as a central server where the sender and requester connect to first.
+The tracker acts as a central server where the sender and requester connect to first. Clients can either request files or send file info to the tracker. 
 
+### File Sharing Protocol 
 I created a cusutom p2p protocol between sender and tracker, and requester and tracker. 
 
-The tracker can receive a string separated by | 
+The tracker can receive a string separated by `|` 
 
 The sender can send the following to the tracker to send file info to the tracker: 
 ```
-(SEND|FILENAME|client addr it will listen on|client port it will listen on)
+<SEND|FILENAME|client addr it will listen on|client port it will listen on>
 ```
 
 Requester can send the following to the tracker to request a file: 
 ```
-(REQUEST|FILENAME)
+<REQUEST|FILENAME>
 ```
 
 Requester can receive the following from the tracker after tracker receives request:
 ```
-(EXISTS|p2p server info)
+<EXISTS|p2p server info>
 ```
 or
 ```
-(NOFILE|p2p server info)
+<NOFILE|p2p server info>
 ```
 
 Connections are made between tracker and requester, and sender and tracker using the TCP protocol
 ```python
-socket(socket.AF_INET, socket.SOCK_STREAM)
+socket<socket.AF_INET, socket.SOCK_STREAM>
 ```
 
 Requesting to show all online clients: 
 ```
-(CLIENTS|ALL)
+<CLIENTS|ALL>
 ```
 
 ### User Authentication 
@@ -103,7 +100,7 @@ Each line stores:
 
 In auth.py, there are functions for logging in and registering. 
 
-Authenticatiion is achieved with hashing. When the user enters a password using the register action, the password will be hashed using sha256.
+Authentication is achieved with hashing. When the user enters a password using the register action, the password will be hashed using sha256.
 
 ```python
 password = 'test password'
@@ -113,7 +110,11 @@ hashed_password = hasher.hexdigest()
 ```
 This ensures integrity of passwords. 
 
-### Online Clients 
+### Check Online Clients (Extra) 
+Example after 127.0.0.0:6001 and 127.0.0.2:6002 sent a file (Figure 5)
+
+![Online clients shown](./screenshots/clients.png)
+
 Each time a client sends a file, it is put in the tracker online_clients dict.
 ```python
 online_clients = {}
@@ -150,4 +151,4 @@ for client in response:
 ```
 
 ## Potential Problems 
-- Could experience an error if you try to send a file larger than 8kb.
+- Could experience an error if you try to send a file larger than 8kb
